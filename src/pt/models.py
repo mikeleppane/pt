@@ -92,6 +92,18 @@ class TaskConfig(BaseModel):
     after_success: str | None = None  # Script/command to run after successful task
     after_failure: str | None = None  # Script/command to run after failed task
 
+    # Variable interpolation
+    use_vars: bool | None = (
+        None  # Per-task opt-in for variable interpolation (None = use global default)
+    )
+
+    # Runner prefix
+    disable_runner: bool = False  # Opt-out of global runner for this task
+
+    # Output redirection
+    stdout: str | None = None  # "null", "inherit", or file path for stdout
+    stderr: str | None = None  # "null", "inherit", or file path for stderr
+
     @field_validator("tags")
     @classmethod
     def validate_tags(cls, v: list[str]) -> list[str]:
@@ -121,6 +133,14 @@ class TaskConfig(BaseModel):
         if self.script is not None and self.cmd is not None:
             msg = "Task cannot have both 'script' and 'cmd'"
             raise ValueError(msg)
+
+        # Validate output redirection
+        for field_name in ("stdout", "stderr"):
+            value = getattr(self, field_name)
+            # It's a file path - validate it's not empty
+            if value is not None and value not in ("null", "inherit") and not value.strip():
+                msg = f"{field_name} file path cannot be empty"
+                raise ValueError(msg)
 
         return self
 
@@ -154,6 +174,8 @@ class ProfileConfig(BaseModel):
     dependencies: dict[str, list[str]] = Field(default_factory=dict)  # Override dependency groups
     python: str | None = None  # Override Python version
     env_files: list[str] = Field(default_factory=list)  # .env files for this profile
+    variables: dict[str, str] = Field(default_factory=dict)  # Profile-specific variable overrides
+    runner: str | None = None  # Profile-specific runner override
 
 
 class ProjectConfig(BaseModel):
@@ -165,6 +187,8 @@ class ProjectConfig(BaseModel):
     python: str | None = None
     default_profile: str | None = None  # Default profile to use
     on_error_task: str | None = None  # Task to run when any task fails
+    use_vars: bool = False  # Global default for variable interpolation
+    runner: str | None = None  # Global command prefix for all tasks
 
 
 class PtConfig(BaseModel):
@@ -173,6 +197,7 @@ class PtConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     project: ProjectConfig = Field(default_factory=ProjectConfig)
+    variables: dict[str, str] = Field(default_factory=dict)  # Global variables for templating
     env: dict[str, Annotated[str | list[str], Field()]] = Field(default_factory=dict)
     env_files: list[str] = Field(default_factory=list)  # Global .env files to load
     dependencies: dict[str, list[str]] = Field(default_factory=dict)

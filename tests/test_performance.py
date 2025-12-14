@@ -46,8 +46,7 @@ class TestConfigCaching:
         # Cache hit should be at least 5x faster
         # (TOML parsing + Pydantic validation + inheritance resolution overhead)
         assert warm_time < cold_time * 0.2, (
-            f"Cache hit ({warm_time:.4f}s) should be much faster than "
-            f"cold load ({cold_time:.4f}s)"
+            f"Cache hit ({warm_time:.4f}s) should be much faster than cold load ({cold_time:.4f}s)"
         )
 
     def test_config_cache_invalidation_on_mtime_change(self, tmp_path: Path) -> None:
@@ -98,7 +97,7 @@ class TestConfigCaching:
 
         # Create inheritance chain: base -> task1 -> task2 -> ... -> task49
         for i in range(50):
-            extend = "base" if i == 0 else f"task{i-1}"
+            extend = "base" if i == 0 else f"task{i - 1}"
             config_lines.extend(
                 [
                     f"[tasks.task{i}]",
@@ -215,11 +214,11 @@ class TestAlgorithmicComplexity:
 
                     [tasks.base]
                     cmd = "echo base"
-                    dependencies = [{', '.join(deps)}]
+                    dependencies = [{", ".join(deps)}]
 
                     [tasks.child]
                     extend = "base"
-                    dependencies = [{', '.join(deps)}]
+                    dependencies = [{", ".join(deps)}]
                 """)
             )
 
@@ -239,8 +238,7 @@ class TestAlgorithmicComplexity:
         # Allow 15x ratio for 10x size increase (accounting for overhead)
         # O(n²) would give ~100x ratio
         assert ratio < 15, (
-            f"Scaling appears quadratic: 10x size increase took {ratio:.1f}x longer. "
-            f"Times: {times}"
+            f"Scaling appears quadratic: 10x size increase took {ratio:.1f}x longer. Times: {times}"
         )
 
     def test_pythonpath_merging_scales_linearly(self, tmp_path: Path) -> None:
@@ -258,11 +256,11 @@ class TestAlgorithmicComplexity:
 
                     [tasks.base]
                     cmd = "echo base"
-                    pythonpath = [{', '.join(paths)}]
+                    pythonpath = [{", ".join(paths)}]
 
                     [tasks.child]
                     extend = "base"
-                    pythonpath = [{', '.join(paths)}]
+                    pythonpath = [{", ".join(paths)}]
                 """)
             )
 

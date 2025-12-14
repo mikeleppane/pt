@@ -55,9 +55,7 @@ def complete_profile_name(_ctx: Any, _param: Any, incomplete: str) -> list[Compl
     """
     try:
         config, _ = load_config()
-        profiles = [
-            CompletionItem(name, help=f"Profile: {name}") for name in config.profiles
-        ]
+        profiles = [CompletionItem(name, help=f"Profile: {name}") for name in config.profiles]
         return [p for p in profiles if p.value.startswith(incomplete)]
     except (ConfigNotFoundError, Exception):
         return []

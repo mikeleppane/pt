@@ -13,7 +13,7 @@ from rich.table import Table
 from pt import __version__
 from pt.completion import complete_pipeline_name, complete_profile_name, complete_task_name
 from pt.config import ConfigError, ConfigNotFoundError, load_config
-from pt.executor import check_uv_installed
+from pt.executor import ExecutionResult, check_uv_installed
 from pt.models import OnFailure, OutputMode
 from pt.runner import Runner
 
@@ -29,7 +29,9 @@ def print_uv_not_installed_error() -> None:
     console.print("[red]Error:[/red] uv is not installed.")
     console.print("\n[bold]Install uv:[/bold]")
     console.print("  • Linux/macOS: [cyan]curl -LsSf https://astral.sh/uv/install.sh | sh[/cyan]")
-    console.print("  • Windows:     [cyan]powershell -c \"irm https://astral.sh/uv/install.ps1 | iex\"[/cyan]")
+    console.print(
+        '  • Windows:     [cyan]powershell -c "irm https://astral.sh/uv/install.ps1 | iex"[/cyan]'
+    )
     console.print("  • pip:         [cyan]pip install uv[/cyan]")
     console.print("\n[dim]Or visit: https://docs.astral.sh/uv/getting-started/installation/[/dim]")
 
@@ -59,6 +61,120 @@ def handle_errors(func: Any) -> Any:
     return wrapper
 
 
+def _run_inline_task(
+    inline_command: str,
+    args: list[str],
+    env_vars: list[str],
+    working_dir: Path | None,
+    timeout: int | None,
+    python_version: str | None,
+    verbose: bool,
+    profile: str | None,
+    config_path: Path | None,
+) -> ExecutionResult:
+    """Execute an inline task defined on the command line.
+
+    Args:
+        inline_command: The command to execute
+        args: Additional arguments to pass
+        env_vars: Environment variables (KEY=VALUE format)
+        working_dir: Working directory
+        timeout: Timeout in seconds
+        python_version: Python version
+        verbose: Verbose output
+        profile: Profile name
+        config_path: Config file path (for settings)
+
+    Returns:
+        ExecutionResult from execution
+    """
+    from pt.config import (
+        ConfigNotFoundError,
+        build_profile_env,
+        get_effective_runner,
+        get_project_root,
+        load_config,
+    )
+    from pt.executor import UvCommand, execute_sync
+    from pt.models import TaskConfig
+
+    # Parse environment variables
+    parsed_env: dict[str, str] = {}
+    for env_var in env_vars:
+        if "=" not in env_var:
+            console.print(f"[red]Error:[/red] Invalid env format: {env_var} (expected KEY=VALUE)")
+            sys.exit(1)
+        key, value = env_var.split("=", 1)
+        parsed_env[key] = value
+
+    # Try to load config if it exists (for settings/profile support)
+    config = None
+    project_root = Path.cwd()
+    runner_prefix = None
+
+    try:
+        if config_path:
+            config, path = load_config(config_path)
+            project_root = get_project_root(path)
+        else:
+            # Try to find config but don't fail if not found
+            try:
+                config, path = load_config(None)
+                project_root = get_project_root(path)
+            except ConfigNotFoundError:
+                pass  # No config file, use defaults
+    except Exception:
+        pass  # Ignore config errors for inline tasks
+
+    # Build environment
+    final_env: dict[str, str] = {}
+
+    if config:
+        # Merge global/profile env if config exists
+        final_env = build_profile_env(config, project_root, profile)
+
+        # Get runner prefix from config
+        # Create a temporary TaskConfig to use with get_effective_runner
+        temp_task = TaskConfig(cmd=inline_command)
+        runner_prefix = get_effective_runner(config, temp_task, profile)
+
+    # Override with inline env vars
+    final_env.update(parsed_env)
+
+    # Determine working directory
+    cwd = working_dir if working_dir else project_root
+
+    # Determine Python version
+    effective_python = python_version
+    if not effective_python and config:
+        from pt.config import get_profile_python
+
+        effective_python = get_profile_python(config, profile)
+
+    # Build command
+    command = UvCommand(
+        cmd=inline_command,
+        args=args,
+        env=final_env,
+        cwd=cwd,
+        python=effective_python,
+        runner=runner_prefix,
+    )
+
+    if verbose:
+        console.print(f"[dim]Running inline: {' '.join(command.build())}[/dim]")
+
+    # Execute
+    result = execute_sync(command, capture_output=not verbose, timeout=timeout)
+
+    if verbose or not result.success:
+        from pt.parallel import print_task_output
+
+        print_task_output("inline", result, console)
+
+    return result
+
+
 @click.group()
 @click.version_option(version=__version__, prog_name="pt")
 def main() -> None:
@@ -67,7 +183,7 @@ def main() -> None:
 
 
 @main.command()
-@click.argument("task_name", shell_complete=complete_task_name)
+@click.argument("task_name", required=False, shell_complete=complete_task_name)
 @click.argument("args", nargs=-1)
 @click.option("-v", "--verbose", is_flag=True, help="Show verbose output")
 @click.option(
@@ -84,27 +200,87 @@ def main() -> None:
     type=click.Path(exists=True, path_type=Path),
     help="Path to config file",
 )
+@click.option(
+    "--inline",
+    "inline_command",
+    help="Define task inline without config file",
+)
+@click.option(
+    "--env",
+    "env_vars",
+    multiple=True,
+    help="Environment variables (KEY=VALUE, can be used multiple times)",
+)
+@click.option(
+    "--cwd",
+    "working_dir",
+    type=click.Path(exists=True, path_type=Path),
+    help="Working directory for inline task",
+)
+@click.option(
+    "--timeout",
+    type=int,
+    help="Timeout in seconds for inline task",
+)
+@click.option(
+    "--python",
+    "python_version",
+    help="Python version for inline task",
+)
 @handle_errors
 def run(
-    task_name: str,
+    task_name: str | None,
     args: tuple[str, ...],
     verbose: bool,
     profile: str | None,
     config_path: Path | None,
+    inline_command: str | None,
+    env_vars: tuple[str, ...],
+    working_dir: Path | None,
+    timeout: int | None,
+    python_version: str | None,
 ) -> None:
-    """Run a task defined in pt.toml.
+    """Run a task defined in pt.toml or inline.
 
-    TASK_NAME is the name of the task to run.
+    TASK_NAME is the name of the task to run (not needed with --inline).
     Additional ARGS are passed to the task's script/command.
+
+    Examples:
+        pt run test                                    # Run configured task
+        pt run --inline "pytest tests/"                # Inline command
+        pt run --inline "python script.py" --env DEBUG=1  # With env vars
     """
     if not check_uv_installed():
         print_uv_not_installed_error()
+        sys.exit(1)
+
+    # Handle inline task
+    if inline_command:
+        if task_name:
+            console.print("[yellow]Warning:[/yellow] Task name is ignored with --inline")
+        result = _run_inline_task(
+            inline_command=inline_command,
+            args=list(args),
+            env_vars=list(env_vars),
+            working_dir=working_dir,
+            timeout=timeout,
+            python_version=python_version,
+            verbose=verbose,
+            profile=profile,
+            config_path=config_path,
+        )
+        sys.exit(result.return_code)
+
+    # Normal configured task execution
+    if not task_name:
+        console.print("[red]Error:[/red] TASK_NAME is required without --inline")
         sys.exit(1)
 
     runner = Runner.from_config_file(config_path, verbose=verbose, profile=profile)
 
     # Resolve alias to task name
     from pt.config import resolve_task_name
+
     try:
         resolved_task_name = resolve_task_name(runner.config, task_name)
     except ValueError as e:
@@ -242,6 +418,7 @@ def multi(
     elif task_names:
         # Run tasks by name - resolve aliases
         from pt.config import resolve_task_name
+
         # Resolve all task names/aliases upfront
         try:
             final_task_names = [resolve_task_name(runner.config, name) for name in task_names]

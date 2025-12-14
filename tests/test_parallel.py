@@ -51,7 +51,8 @@ class TestParallelExecutor:
         executor = ParallelExecutor()
 
         async def mock_executor(
-            task_name: str, output_queue: asyncio.Queue[tuple[str, str]] | None  # noqa: ARG001
+            task_name: str,  # noqa: ARG001
+            output_queue: asyncio.Queue[tuple[str, str]] | None,  # noqa: ARG001
         ) -> ExecutionResult:
             msg = "Should not be called"
             raise RuntimeError(msg)
@@ -65,7 +66,8 @@ class TestParallelExecutor:
         executor = ParallelExecutor()
 
         async def mock_executor(
-            task_name: str, output_queue: asyncio.Queue[tuple[str, str]] | None  # noqa: ARG001
+            task_name: str,
+            output_queue: asyncio.Queue[tuple[str, str]] | None,  # noqa: ARG001
         ) -> ExecutionResult:
             return ExecutionResult(
                 return_code=0,
@@ -86,7 +88,8 @@ class TestParallelExecutor:
         executor = ParallelExecutor()
 
         async def mock_executor(
-            task_name: str, output_queue: asyncio.Queue[tuple[str, str]] | None  # noqa: ARG001
+            task_name: str,
+            output_queue: asyncio.Queue[tuple[str, str]] | None,  # noqa: ARG001
         ) -> ExecutionResult:
             await asyncio.sleep(0.01)  # Simulate work
             return ExecutionResult(
@@ -106,7 +109,8 @@ class TestParallelExecutor:
         executor = ParallelExecutor(on_failure=OnFailure.FAIL_FAST)
 
         async def mock_executor(
-            task_name: str, output_queue: asyncio.Queue[tuple[str, str]] | None  # noqa: ARG001
+            task_name: str,
+            output_queue: asyncio.Queue[tuple[str, str]] | None,  # noqa: ARG001
         ) -> ExecutionResult:
             if task_name == "task2":
                 await asyncio.sleep(0.01)
@@ -131,7 +135,8 @@ class TestParallelExecutor:
         call_count = {"count": 0}
 
         async def mock_executor(
-            task_name: str, output_queue: asyncio.Queue[tuple[str, str]] | None  # noqa: ARG001
+            task_name: str,
+            output_queue: asyncio.Queue[tuple[str, str]] | None,  # noqa: ARG001
         ) -> ExecutionResult:
             call_count["count"] += 1
             await asyncio.sleep(0.01)
@@ -154,7 +159,8 @@ class TestParallelExecutor:
         executor = ParallelExecutor(on_failure=OnFailure.CONTINUE)
 
         async def mock_executor(
-            task_name: str, output_queue: asyncio.Queue[tuple[str, str]] | None  # noqa: ARG001
+            task_name: str,
+            output_queue: asyncio.Queue[tuple[str, str]] | None,  # noqa: ARG001
         ) -> ExecutionResult:
             await asyncio.sleep(0.01)
             # Make task2 and task3 fail
@@ -221,7 +227,8 @@ class TestParallelExecutor:
         started_tasks: list[str] = []
 
         async def mock_executor(
-            task_name: str, output_queue: asyncio.Queue[tuple[str, str]] | None  # noqa: ARG001
+            task_name: str,
+            output_queue: asyncio.Queue[tuple[str, str]] | None,  # noqa: ARG001
         ) -> ExecutionResult:
             started_tasks.append(task_name)
             if task_name == "fail":
@@ -249,7 +256,8 @@ class TestSequentialExecutor:
         executor = SequentialExecutor()
 
         async def mock_executor(
-            task_name: str, output_queue: asyncio.Queue[tuple[str, str]] | None  # noqa: ARG001
+            task_name: str,  # noqa: ARG001
+            output_queue: asyncio.Queue[tuple[str, str]] | None,  # noqa: ARG001
         ) -> ExecutionResult:
             msg = "Should not be called"
             raise RuntimeError(msg)
@@ -285,7 +293,8 @@ class TestSequentialExecutor:
         execution_order: list[str] = []
 
         async def mock_executor(
-            task_name: str, output_queue: asyncio.Queue[tuple[str, str]] | None  # noqa: ARG001
+            task_name: str,
+            output_queue: asyncio.Queue[tuple[str, str]] | None,  # noqa: ARG001
         ) -> ExecutionResult:
             execution_order.append(task_name)
             await asyncio.sleep(0.01)
@@ -307,7 +316,8 @@ class TestSequentialExecutor:
         execution_order: list[str] = []
 
         async def mock_executor(
-            task_name: str, output_queue: asyncio.Queue[tuple[str, str]] | None  # noqa: ARG001
+            task_name: str,
+            output_queue: asyncio.Queue[tuple[str, str]] | None,  # noqa: ARG001
         ) -> ExecutionResult:
             execution_order.append(task_name)
             if task_name == "task2":
@@ -396,7 +406,8 @@ class TestIntegrationScenarios:
         executor = ParallelExecutor(on_failure=OnFailure.CONTINUE)
 
         async def mock_executor(
-            task_name: str, output_queue: asyncio.Queue[tuple[str, str]] | None  # noqa: ARG001
+            task_name: str,
+            output_queue: asyncio.Queue[tuple[str, str]] | None,  # noqa: ARG001
         ) -> ExecutionResult:
             await asyncio.sleep(0.01)
             # Alternate success/failure
@@ -422,7 +433,8 @@ class TestIntegrationScenarios:
         executor = SequentialExecutor()
 
         async def mock_executor(
-            task_name: str, output_queue: asyncio.Queue[tuple[str, str]] | None  # noqa: ARG001
+            task_name: str,
+            output_queue: asyncio.Queue[tuple[str, str]] | None,  # noqa: ARG001
         ) -> ExecutionResult:
             return ExecutionResult(
                 return_code=0,
@@ -443,7 +455,8 @@ class TestIntegrationScenarios:
         executor = ParallelExecutor()
 
         async def mock_executor(
-            task_name: str, output_queue: asyncio.Queue[tuple[str, str]] | None  # noqa: ARG001
+            task_name: str,
+            output_queue: asyncio.Queue[tuple[str, str]] | None,  # noqa: ARG001
         ) -> ExecutionResult:
             # Vary execution time
             if task_name == "slow":

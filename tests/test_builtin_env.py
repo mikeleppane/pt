@@ -48,9 +48,7 @@ def test_builtin_env_with_profile(tmp_path: Path) -> None:
     )
 
     config, _ = load_config(config_file)
-    runner = Runner(
-        config=config, project_root=tmp_path, config_path=config_file, profile="dev"
-    )
+    runner = Runner(config=config, project_root=tmp_path, config_path=config_file, profile="dev")
 
     builtin_env = runner._build_builtin_env("test", config.tasks["test"])
 

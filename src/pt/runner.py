@@ -107,7 +107,14 @@ class Runner:
         Returns:
             Configured Runner instance.
         """
+        from pt.config import apply_variable_interpolation, get_effective_profile
+
         config, path = load_config(config_path)
+
+        # Apply variable interpolation with the active profile
+        effective_profile = get_effective_profile(config, profile)
+        config = apply_variable_interpolation(config, effective_profile)
+
         return cls(
             config=config,
             project_root=get_project_root(path),
@@ -172,6 +179,11 @@ class Runner:
         if task.cwd:
             cwd = resolve_path(task.cwd, self.project_root)
 
+        # Get effective runner
+        from pt.config import get_effective_runner
+
+        runner = get_effective_runner(self.config, task, self.profile)
+
         return UvCommand(
             script=script,
             cmd=task.cmd,
@@ -180,6 +192,9 @@ class Runner:
             python=python_version,
             env=env,
             cwd=cwd,
+            runner=runner,
+            stdout_redirect=task.stdout,
+            stderr_redirect=task.stderr,
         )
 
     def _build_builtin_env(
@@ -294,12 +309,18 @@ class Runner:
         }
         env = self._build_task_environment(task, extra_env=hook_extra_env)
 
+        # Get effective runner for hooks (they inherit from task)
+        from pt.config import get_effective_runner
+
+        runner = get_effective_runner(self.config, task, self.profile)
+
         # Build command for hook execution
         return UvCommand(
             script=str(script_path),
             env=env,
             cwd=Path(task.cwd) if task.cwd else self.project_root,
             python=task.python,
+            runner=runner,
         )
 
     def _format_hook_result(
@@ -812,7 +833,9 @@ class Runner:
 
             # Execute error handler if task failed and ignore_errors is not set
             if not result.success and not task.ignore_errors:
-                await self._execute_error_handler_async(task_name, result.return_code, result.stderr)
+                await self._execute_error_handler_async(
+                    task_name, result.return_code, result.stderr
+                )
 
             # Handle ignore_errors
             if not result.success and task.ignore_errors:

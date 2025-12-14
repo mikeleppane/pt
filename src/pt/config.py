@@ -555,3 +555,83 @@ def resolve_task_name(config: PtConfig, name_or_alias: str) -> str:
     if suggestions:
         msg += f". Did you mean: {', '.join(suggestions)}?"
     raise ValueError(msg)
+
+
+def get_effective_runner(
+    config: PtConfig,
+    task: TaskConfig,
+    profile_name: str | None = None,
+) -> str | None:
+    """Get the effective runner for a task.
+
+    Priority:
+    1. If task.disable_runner is True, return None
+    2. Profile runner (if profile is active)
+    3. Global runner from project config
+
+    Args:
+        config: PT configuration
+        task: Task configuration
+        profile_name: Active profile name
+
+    Returns:
+        Runner string or None
+    """
+    # Check if task explicitly disables runner
+    if task.disable_runner:
+        return None
+
+    # Check profile runner
+    effective_profile = get_effective_profile(config, profile_name)
+    profile = config.get_profile(effective_profile)
+    if profile and profile.runner:
+        return profile.runner
+
+    # Fall back to global runner
+    return config.project.runner
+
+
+def apply_variable_interpolation(
+    config: PtConfig,
+    profile_name: str | None = None,
+) -> PtConfig:
+    """Apply variable interpolation to all tasks that have use_vars enabled.
+
+    Args:
+        config: Configuration with tasks to interpolate
+        profile_name: Active profile name for variable merging
+
+    Returns:
+        New config with interpolated task values
+    """
+    from pt.variables import interpolate_task_fields, merge_variables
+
+    # Merge global and profile variables
+    profile = config.get_profile(profile_name)
+    variables = merge_variables(config.variables, profile.variables if profile else None)
+
+    # No variables defined, return as-is
+    if not variables:
+        return config
+
+    # Determine global default
+    global_use_vars = config.project.use_vars
+
+    # Process each task
+    interpolated_tasks: dict[str, TaskConfig] = {}
+    for task_name, task in config.tasks.items():
+        # Check if this task should use variable interpolation
+        use_vars = task.use_vars if task.use_vars is not None else global_use_vars
+
+        if not use_vars:
+            # No interpolation for this task
+            interpolated_tasks[task_name] = task
+            continue
+
+        # Convert task to dict, interpolate, then back to TaskConfig
+        task_dict = task.model_dump()
+        interpolated_dict = interpolate_task_fields(task_dict, variables, task_name)
+        interpolated_tasks[task_name] = TaskConfig(**interpolated_dict)
+
+    # Return new config with interpolated tasks
+    return config.model_copy(update={"tasks": interpolated_tasks})

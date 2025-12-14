@@ -8,7 +8,7 @@ import os
 import shlex
 import subprocess
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, TextIO
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -45,6 +45,9 @@ class UvCommand:
     python: str | None = None
     env: dict[str, str] = field(default_factory=dict)
     cwd: Path | None = None
+    runner: str | None = None  # Runner prefix to prepend
+    stdout_redirect: str | None = None  # stdout redirection
+    stderr_redirect: str | None = None  # stderr redirection
 
     def build(self) -> list[str]:
         """Build the complete uv command as a list of arguments."""
@@ -58,12 +61,21 @@ class UvCommand:
         for dep in self.dependencies:
             command.extend(["--with", dep])
 
+        # Add runner prefix if specified
+        runner_parts = []
+        if self.runner:
+            runner_parts = shlex.split(self.runner)
+
         # Add script or command
         if self.script:
+            # For scripts: uv run [--python X] [--with Y] runner script args
+            if runner_parts:
+                command.extend(runner_parts)
             command.append(self.script)
         elif self.cmd:
-            # For cmd mode, we need to parse it as a shell command
-            # and pass to uv run
+            # For cmd mode: uv run [--python X] [--with Y] runner cmd
+            if runner_parts:
+                command.extend(runner_parts)
             command.extend(shlex.split(self.cmd))
 
         # Add additional arguments
@@ -76,6 +88,42 @@ class UvCommand:
         result = os.environ.copy()
         result.update(self.env)
         return result
+
+
+def _prepare_output_redirect(
+    redirect_value: str | None,
+    cwd: Path | None,
+) -> int | TextIO | None:
+    """Prepare output redirection for subprocess.
+
+    Args:
+        redirect_value: "null", "inherit", or file path
+        cwd: Working directory (for resolving relative paths)
+
+    Returns:
+        File descriptor, subprocess constant, or None
+    """
+    from pathlib import Path
+
+    if redirect_value is None:
+        return None
+
+    if redirect_value == "null":
+        return subprocess.DEVNULL
+
+    if redirect_value == "inherit":
+        return None  # subprocess default
+
+    # It's a file path
+    file_path = Path(redirect_value)
+    if not file_path.is_absolute() and cwd:
+        file_path = cwd / file_path
+
+    # Ensure parent directory exists
+    file_path.parent.mkdir(parents=True, exist_ok=True)
+
+    # Open in append mode
+    return file_path.open("a")  # Caller must close this
 
 
 def execute_sync(
@@ -96,25 +144,63 @@ def execute_sync(
     cmd_list = command.build()
     env = command.build_env()
 
+    # Handle output redirection
+    stdout_fd: int | TextIO | None = None
+    stderr_fd: int | TextIO | None = None
+    files_to_close: list[TextIO] = []
+
     try:
+        # Determine stdout handling
+        if command.stdout_redirect:
+            stdout_result = _prepare_output_redirect(command.stdout_redirect, command.cwd)
+            if stdout_result == subprocess.DEVNULL:
+                stdout_fd = subprocess.DEVNULL
+            elif stdout_result is None:
+                stdout_fd = None  # Inherit
+            else:
+                # It's a TextIO file handle
+                stdout_fd = stdout_result
+                files_to_close.append(stdout_result)  # type: ignore[arg-type]
+        elif capture_output:
+            stdout_fd = subprocess.PIPE
+        else:
+            stdout_fd = None
+
+        # Determine stderr handling
+        if command.stderr_redirect:
+            stderr_result = _prepare_output_redirect(command.stderr_redirect, command.cwd)
+            if stderr_result == subprocess.DEVNULL:
+                stderr_fd = subprocess.DEVNULL
+            elif stderr_result is None:
+                stderr_fd = None  # Inherit
+            else:
+                # It's a TextIO file handle
+                stderr_fd = stderr_result
+                files_to_close.append(stderr_result)  # type: ignore[arg-type]
+        elif capture_output:
+            stderr_fd = subprocess.PIPE
+        else:
+            stderr_fd = None
+
         result = subprocess.run(
             cmd_list,
             env=env,
             cwd=command.cwd,
-            capture_output=capture_output,
+            stdout=stdout_fd,
+            stderr=stderr_fd,
             text=True,
             check=False,
             timeout=timeout,
         )
         return ExecutionResult(
             return_code=result.returncode,
-            stdout=result.stdout if capture_output else "",
-            stderr=result.stderr if capture_output else "",
+            stdout=result.stdout if capture_output and not command.stdout_redirect else "",
+            stderr=result.stderr if capture_output and not command.stderr_redirect else "",
             command=cmd_list,
         )
     except subprocess.TimeoutExpired:
         return ExecutionResult(
-            return_code=124,  # Standard timeout exit code
+            return_code=124,
             stdout="",
             stderr=f"Command timed out after {timeout} seconds",
             command=cmd_list,
@@ -134,6 +220,11 @@ def execute_sync(
             stderr=f"Failed to execute command: {e}",
             command=cmd_list,
         )
+    finally:
+        # Close any file descriptors we opened
+        for fd in files_to_close:
+            with contextlib.suppress(Exception):
+                fd.close()
 
 
 async def execute_async(

@@ -45,6 +45,13 @@ pt solves the common pain points of running Python scripts:
 - 🌍 **.env file support**: Load environment variables from files
 - 🔍 **Config discovery**: Automatically finds `pt.toml` in parent directories
 
+### ✨ New Features
+
+- 🔤 **Task variables/templating**: Reusable `{variable}` syntax in task definitions
+- 🏃 **Global runner prefix**: Automatically prepend commands (e.g., `dotenv run`, `docker exec`)
+- 📝 **Output redirection**: Send stdout/stderr to files or /dev/null
+- ⚡ **Inline tasks**: Run commands directly from CLI without config file
+
 ## Installation
 
 ### Prerequisites
@@ -104,6 +111,178 @@ pythonpath = ["src", "tests"]
 ```bash
 pt run hello
 pt run test
+```
+
+## New Features ✨
+
+### Task Variables/Templating
+
+Define reusable variables to eliminate duplication in your task definitions:
+
+```toml
+[project]
+use_vars = true  # Enable globally
+
+[variables]
+src_dir = "src/myapp"
+test_dir = "tests"
+package = "mypackage"
+version = "1.0.0"
+
+[tasks.test]
+cmd = "pytest {test_dir} -v"
+
+[tasks.lint]
+cmd = "ruff check {src_dir}"
+
+[tasks.type-check]
+cmd = "mypy {src_dir}/{package}"
+
+[tasks.build]
+cmd = "python -m build"
+env = { VERSION = "{version}" }
+args = ["--outdir", "{src_dir}/dist"]
+```
+
+**Features:**
+- Use `{variable}` syntax in: cmd, script, args, env values, cwd, dependencies, hooks
+- Global variables in `[variables]` section
+- Profile-specific overrides via `[profiles.<name>].variables`
+- Recursive variable expansion (variables can reference other variables)
+- Circular reference detection with helpful error messages
+- Per-task opt-in with `use_vars = true` or global default
+
+**Profile-specific variables:**
+```toml
+[variables]
+api_url = "http://localhost:8000"
+env_name = "development"
+
+[profiles.prod]
+variables = { api_url = "https://api.prod.com", env_name = "production" }
+
+[tasks.deploy]
+use_vars = true
+cmd = "deploy --url {api_url} --env {env_name}"
+```
+
+### Global Runner/Command Prefix
+
+Automatically prefix all commands with a runner (like `dotenv run`, `docker exec`, etc.):
+
+```toml
+[project]
+runner = "dotenv run"  # Prepend to all commands
+
+[tasks.test]
+cmd = "pytest tests/"
+# Actually runs: uv run dotenv run pytest tests/
+
+[tasks.dev]
+cmd = "uvicorn app:main --reload"
+# Actually runs: uv run dotenv run uvicorn app:main --reload
+
+[tasks.direct]
+cmd = "echo 'no prefix needed'"
+disable_runner = true  # Opt-out for specific tasks
+```
+
+**Common use cases:**
+- Load environment variables: `runner = "dotenv run"`
+- Docker execution: `runner = "docker exec mycontainer"`
+- SSH execution: `runner = "ssh server"`
+- Custom wrapper scripts: `runner = "scripts/wrapper.sh"`
+
+**Profile-specific runners:**
+```toml
+[project]
+runner = "echo 'local:' &&"  # Local development
+
+[profiles.docker]
+runner = "docker exec app"  # Run in container
+
+[profiles.remote]
+runner = "ssh production"  # Run on remote server
+```
+
+### Task Output Capture/Redirection
+
+Control where task output goes - to files, /dev/null, or inherited from parent:
+
+```toml
+[tasks.build]
+cmd = "python build.py"
+stdout = "logs/build.log"  # Append stdout to file
+stderr = "logs/build.err"  # Append stderr to file
+
+[tasks.quiet-check]
+cmd = "ruff check ."
+stdout = "null"  # Silence stdout (still see errors)
+
+[tasks.verbose]
+cmd = "pytest tests/ -v"
+stdout = "inherit"  # Use parent's stdout (default behavior)
+
+[tasks.ci-test]
+cmd = "pytest tests/"
+stdout = "ci/test-output.log"
+stderr = "ci/test-errors.log"
+```
+
+**Special values:**
+- `"null"` - Discard output (like `/dev/null`)
+- `"inherit"` - Use parent process streams (default)
+- `"path/to/file.log"` - Write to file (appends, creates parent dirs automatically)
+
+**Features:**
+- Relative paths resolved from project root or task `cwd`
+- Files opened in append mode (won't overwrite)
+- Parent directories created automatically
+- File descriptors properly cleaned up
+
+### Inline Task Definitions
+
+Run commands directly from CLI without defining them in config:
+
+```bash
+# Simple inline command
+pt run --inline "pytest tests/"
+
+# With environment variables
+pt run --inline "python deploy.py" --env STAGE=prod --env DEBUG=0
+
+# With working directory
+pt run --inline "make build" --cwd workspace/
+
+# With Python version
+pt run --inline "python script.py" --python 3.11
+
+# With timeout
+pt run --inline "long-task.py" --timeout 300
+
+# All together
+pt run --inline "pytest tests/" \
+  --env CI=1 \
+  --cwd tests/ \
+  --timeout 60 \
+  --python 3.12
+```
+
+**Features:**
+- Works with or without a config file
+- If config exists, respects global settings (runner, env, profile)
+- Inline `--env` overrides config environment variables
+- Supports all task options: `--timeout`, `--python`, `--cwd`
+- Additional arguments passed directly to command
+
+**With config integration:**
+```bash
+# Config has: [project] runner = "dotenv run"
+pt run --inline "python app.py"
+# Runs: dotenv run python app.py
+
+# Use specific profile
+pt run --inline "deploy.sh" --profile prod --env VERSION=2.0
 ```
 
 ## Core Concepts
