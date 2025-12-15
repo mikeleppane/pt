@@ -98,6 +98,6 @@ jobs:
           files: dist/*
           generate_release_notes: true
           body: |
-            Install with: `uv tool install pt==${{ steps.version.outputs.VERSION }}`
+            Install with: `uv tool install uvtx==${{ steps.version.outputs.VERSION }}`
 
-            Or with pip: `pip install pt==${{ steps.version.outputs.VERSION }}`
+            Or with pip: `pip install uvtx==${{ steps.version.outputs.VERSION }}`
