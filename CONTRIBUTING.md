@@ -242,7 +242,7 @@ Before the first release, maintainers must configure PyPI trusted publishing:
    - Owner: `mikeleppane`
    - Repository name: `uvtx`
    - Workflow name: `release.yml`
-   - Environment name: `release` (optional but recommended for additional protection)
+   - Environment name: `pypi` (must match the environment in release.yml)
 
 3. **Verify GitHub Actions permissions**:
    - Ensure `.github/workflows/release.yml` has:
