@@ -636,6 +636,7 @@ args = ["--outdir", "{src_dir}/dist"]
 - Recursive variable expansion (variables can reference other variables)
 - Circular reference detection with helpful error messages
 - Per-task opt-in with `use_vars = true` or global default
+- Special `{posargs}` variable for CLI arguments
 
 **Profile-specific variables:**
 
@@ -651,6 +652,59 @@ variables = { api_url = "https://api.prod.com", env_name = "production" }
 use_vars = true
 cmd = "deploy --url {api_url} --env {env_name}"
 ```
+
+**Position Arguments (`{posargs}`):**
+
+Control where CLI arguments are inserted in commands:
+
+```toml
+[tasks.test]
+cmd = "pytest {posargs:tests/} -v"
+
+# Usage:
+# uvtx run test                 → pytest tests/ -v
+# uvtx run test tests/unit      → pytest tests/unit -v
+# uvtx run test -k fast         → pytest -k fast -v
+```
+
+The `{posargs}` variable:
+
+- `{posargs}` - Replaced with CLI arguments, or empty string if none provided
+- `{posargs:default}` - Replaced with CLI arguments, or default value if none
+- Multiple `{posargs}` in same command all get the same replacement
+- Works in `cmd`, `script`, and `args` fields
+
+### Command Failure Prefix
+
+Ignore command failures on a per-task basis using Make-style dash prefix:
+
+```toml
+[tasks.cleanup]
+description = "Clean up temporary files"
+cmd = "- rm -rf temp/"  # OK if directory doesn't exist
+
+[tasks.docker-cleanup]
+description = "Remove old containers"
+cmd = "- docker rm old-container"  # OK if container doesn't exist
+
+[tasks.deploy]
+description = "Deploy application"
+cmd = "- docker stop old-app && docker run new-app"
+```
+
+The `-` prefix (dash followed by space):
+
+- Placed at the start of `cmd` or `script` field
+- Command failure (non-zero exit code) is converted to success
+- Useful for cleanup tasks, optional operations, or best-effort commands
+- More granular than task-level `ignore_errors` option
+- Original exit code is logged for debugging
+
+**When to use:**
+
+- Cleanup tasks where files/resources might not exist
+- Optional operations that shouldn't fail the build
+- Best-effort commands in deployment scripts
 
 ### Global Runner/Command Prefix
 

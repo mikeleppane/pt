@@ -137,6 +137,41 @@ def interpolate_task_fields(
     return result
 
 
+def interpolate_posargs(value: str, extra_args: list[str] | None = None) -> str:
+    """Interpolate {posargs} and {posargs:default} in a string.
+
+    Supports:
+    - {posargs} - Replace with space-joined extra args, or empty string if none
+    - {posargs:default} - Replace with space-joined extra args, or default if none
+
+    Args:
+        value: String containing {posargs} placeholders
+        extra_args: List of extra arguments from CLI, or None
+
+    Returns:
+        Interpolated string with posargs replaced
+
+    Examples:
+        >>> interpolate_posargs("pytest {posargs:tests/}", ["tests/unit"])
+        'pytest tests/unit'
+        >>> interpolate_posargs("pytest {posargs:tests/}", None)
+        'pytest tests/'
+        >>> interpolate_posargs("pytest {posargs}", None)
+        'pytest '
+    """
+    # Regex pattern matches {posargs} or {posargs:default_value}
+    # Using non-greedy match for default to handle nested braces
+    pattern = re.compile(r"\{posargs(?::([^}]*))?\}")
+
+    def replacer(match: re.Match[str]) -> str:
+        default = match.group(1) if match.group(1) is not None else ""
+        if extra_args:
+            return " ".join(extra_args)
+        return default
+
+    return pattern.sub(replacer, value)
+
+
 def merge_variables(
     global_vars: dict[str, str],
     profile_vars: dict[str, str] | None = None,

@@ -140,6 +140,8 @@ class Runner:
         Returns:
             Configured UvCommand ready for execution.
         """
+        from uvtx.variables import interpolate_posargs
+
         # Resolve dependencies (including dependency group references)
         config_deps = self.config.resolve_dependencies(task)
 
@@ -165,15 +167,18 @@ class Runner:
         # Build environment with profile support
         env = self._build_task_environment(task, builtin_env=builtin_env)
 
-        # Build args
-        args = list(task.args)
-        if extra_args:
-            args.extend(extra_args)
+        # Interpolate {posargs} in cmd/script
+        cmd = interpolate_posargs(task.cmd, extra_args) if task.cmd else None
+        script_str = interpolate_posargs(task.script, extra_args) if task.script else None
+
+        # Build args - interpolate posargs in each arg element
+        args = [interpolate_posargs(arg, extra_args) for arg in task.args]
+        # Note: We don't extend args with extra_args since they're already used in {posargs}
 
         # Resolve script path
         script: str | None = None
-        if task.script:
-            script = str(resolve_path(task.script, self.project_root))
+        if script_str:
+            script = str(resolve_path(script_str, self.project_root))
 
         # Resolve working directory
         cwd = self.project_root
@@ -187,7 +192,7 @@ class Runner:
 
         return UvCommand(
             script=script,
-            cmd=task.cmd,
+            cmd=cmd,
             args=args,
             dependencies=all_deps,
             python=python_version,

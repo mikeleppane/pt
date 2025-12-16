@@ -84,3 +84,37 @@ class TestUvCommand:
         assert env["LOG_LEVEL"] == "info"
         # Should also include current env
         assert "PATH" in env  # Standard env var
+
+    def test_ignore_failure_cmd_prefix(self) -> None:
+        """Test that '- ' prefix in cmd sets ignore_failure and strips prefix."""
+        cmd = UvCommand(cmd="- rm -rf temp/")
+        assert cmd.ignore_failure is True
+        assert cmd.cmd == "rm -rf temp/"
+        # Verify command builds correctly without prefix
+        result = cmd.build()
+        assert "rm" in result
+        assert "-rf" in result
+
+    def test_ignore_failure_script_prefix(self) -> None:
+        """Test that '- ' prefix in script sets ignore_failure and strips prefix."""
+        cmd = UvCommand(script="- cleanup.py")
+        assert cmd.ignore_failure is True
+        assert cmd.script == "cleanup.py"
+
+    def test_no_ignore_failure_without_prefix(self) -> None:
+        """Test that commands without prefix have ignore_failure=False."""
+        cmd = UvCommand(cmd="pytest tests/")
+        assert cmd.ignore_failure is False
+        assert cmd.cmd == "pytest tests/"
+
+    def test_ignore_failure_explicit(self) -> None:
+        """Test explicitly setting ignore_failure flag."""
+        cmd = UvCommand(cmd="rm temp/", ignore_failure=True)
+        assert cmd.ignore_failure is True
+        assert cmd.cmd == "rm temp/"  # No prefix stripping
+
+    def test_cmd_with_dash_but_no_space(self) -> None:
+        """Test that dash without space is not treated as prefix."""
+        cmd = UvCommand(cmd="-v --verbose")
+        assert cmd.ignore_failure is False
+        assert cmd.cmd == "-v --verbose"

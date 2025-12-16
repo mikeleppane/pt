@@ -30,6 +30,8 @@ class ExecutionResult:
     timed_out: bool = False
     skipped: bool = False
     skip_reason: str = ""
+    original_return_code: int | None = None  # Original exit code before ignore_failure
+    failure_ignored: bool = False  # Whether failure was ignored due to - prefix
 
     @property
     def success(self) -> bool:
@@ -51,6 +53,19 @@ class UvCommand:
     runner: str | None = None  # Runner prefix to prepend
     stdout_redirect: str | None = None  # stdout redirection
     stderr_redirect: str | None = None  # stderr redirection
+    ignore_failure: bool = False  # Whether to ignore non-zero exit codes
+
+    def __post_init__(self) -> None:
+        """Parse command failure prefix and set ignore_failure flag."""
+        # Check cmd for "- " prefix (Make-style ignore failure)
+        if self.cmd and self.cmd.startswith("- "):
+            object.__setattr__(self, "ignore_failure", True)
+            object.__setattr__(self, "cmd", self.cmd[2:])  # Strip "- " prefix
+
+        # Check script for "- " prefix
+        if self.script and self.script.startswith("- "):
+            object.__setattr__(self, "ignore_failure", True)
+            object.__setattr__(self, "script", self.script[2:])  # Strip "- " prefix
 
     def build(self) -> list[str]:
         """Build the complete uv command as a list of arguments."""
@@ -195,11 +210,23 @@ def execute_sync(
             check=False,
             timeout=timeout,
         )
+
+        # Handle ignore_failure flag (command prefix "- ")
+        return_code = result.returncode
+        original_return_code = None
+        failure_ignored = False
+        if command.ignore_failure and return_code != 0:
+            original_return_code = return_code
+            return_code = 0
+            failure_ignored = True
+
         return ExecutionResult(
-            return_code=result.returncode,
+            return_code=return_code,
             stdout=result.stdout if capture_output and not command.stdout_redirect else "",
             stderr=result.stderr if capture_output and not command.stderr_redirect else "",
             command=cmd_list,
+            original_return_code=original_return_code,
+            failure_ignored=failure_ignored,
         )
     except subprocess.TimeoutExpired:
         return ExecutionResult(
@@ -325,11 +352,21 @@ async def execute_async(
             timed_out=True,
         )
 
+    # Handle ignore_failure flag (command prefix "- ")
+    original_return_code = None
+    failure_ignored = False
+    if command.ignore_failure and return_code != 0:
+        original_return_code = return_code
+        return_code = 0
+        failure_ignored = True
+
     return ExecutionResult(
         return_code=return_code,
         stdout="".join(stdout_lines),
         stderr="".join(stderr_lines),
         command=cmd_list,
+        original_return_code=original_return_code,
+        failure_ignored=failure_ignored,
     )
 
 
