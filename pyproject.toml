@@ -1,6 +1,6 @@
 [project]
 name = "uvtx"
-version = "0.2.0"
+version = "0.3.1"
 description = "A modern Python task runner built for uv with profiles, inheritance, and PEP 723 support"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -33,11 +33,7 @@ classifiers = [
     "Topic :: Software Development :: Build Tools",
     "Topic :: Utilities",
 ]
-dependencies = [
-    "click>=8.0",
-    "pydantic>=2.0",
-    "rich>=13.0",
-]
+dependencies = ["click>=8.0", "pydantic>=2.0", "rich>=13.0"]
 
 [project.urls]
 Homepage = "https://github.com/mikeleppane/uvtx"
